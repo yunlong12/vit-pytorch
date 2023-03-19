@@ -25,9 +25,9 @@ class FeedForward(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim),
             nn.GELU(),
-            nn.Dropout(dropout),
+            #nn.Dropout(dropout),
             nn.Linear(hidden_dim, dim),
-            nn.Dropout(dropout)
+            #nn.Dropout(dropout)
         )
     def forward(self, x):
         return self.net(x)
@@ -39,26 +39,27 @@ class Attention(nn.Module):
         project_out = not (heads == 1 and dim_head == dim)
 
         self.heads = heads
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head ** -0.5 #dim_head = 64
 
         self.attend = nn.Softmax(dim = -1)
-        self.dropout = nn.Dropout(dropout)
+        #self.dropout = nn.Dropout(dropout)
 
-        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias = False)#dim = 128, inner_dim = 512
 
         self.to_out = nn.Sequential(
             nn.Linear(inner_dim, dim),
-            nn.Dropout(dropout)
+            #nn.Dropout(dropout)
         ) if project_out else nn.Identity()
 
     def forward(self, x):
-        qkv = self.to_qkv(x).chunk(3, dim = -1)
+        rs = self.to_qkv(x)
+        qkv = rs.chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h = self.heads), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
 
         attn = self.attend(dots)
-        attn = self.dropout(attn)
+        #attn = self.dropout(attn)
 
         out = torch.matmul(attn, v)
         out = rearrange(out, 'b h n d -> b n (h d)')
@@ -91,16 +92,21 @@ class ViT(nn.Module):
         patch_dim = channels * patch_height * patch_width
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
 
-        self.to_patch_embedding = nn.Sequential(
-            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
-            nn.LayerNorm(patch_dim),
-            nn.Linear(patch_dim, dim),
-            nn.LayerNorm(dim),
-        )
+        # self.to_patch_embedding = nn.Sequential(
+        #     Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = patch_height, p2 = patch_width),
+        #     nn.LayerNorm(patch_dim),
+        #     nn.Linear(patch_dim, dim),
+        #     nn.LayerNorm(dim),
+        # )
+
+        self.to_patch_embedding1 = Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_height, p2=patch_width)
+        self.to_patch_embedding2 = nn.LayerNorm(patch_dim)#patch_dim = 768
+        self.to_patch_embedding3 = nn.Linear(patch_dim, dim)#patch_dim = 768, dim = 128
+        self.to_patch_embedding4 = nn.LayerNorm(dim)
 
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         self.cls_token = nn.Parameter(torch.randn(1, 1, dim))
-        self.dropout = nn.Dropout(emb_dropout)
+        #self.dropout = nn.Dropout(emb_dropout)
 
         self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
 
@@ -113,17 +119,20 @@ class ViT(nn.Module):
         )
 
     def forward(self, img):
-        x = self.to_patch_embedding(img)
-        b, n, _ = x.shape
+        x11 = self.to_patch_embedding1(img)
+        x12 = self.to_patch_embedding2(x11)
+        x13 = self.to_patch_embedding3(x12)
+        x14 = self.to_patch_embedding4(x13)
+        b, n, _ = x14.shape
 
         cls_tokens = repeat(self.cls_token, '1 1 d -> b 1 d', b = b)
-        x = torch.cat((cls_tokens, x), dim=1)
-        x += self.pos_embedding[:, :(n + 1)]
-        x = self.dropout(x)
+        x2 = torch.cat((cls_tokens, x14), dim=1)
+        x3 = x2 + self.pos_embedding[:, :(n + 1)]
+        #x = self.dropout(x)
 
-        x = self.transformer(x)
+        x4 = self.transformer(x3)
 
-        x = x.mean(dim = 1) if self.pool == 'mean' else x[:, 0]
+        x5 = x4.mean(dim = 1) if self.pool == 'mean' else x4[:, 0]
 
-        x = self.to_latent(x)
-        return self.mlp_head(x)
+        x6 = self.to_latent(x5)
+        return self.mlp_head(x6)
