@@ -1,0 +1,6 @@
+version: '2.3'
+
+services:
+    RunMyImage:
+        image: yunlongwang/pytorch:latest
+
