@@ -14,7 +14,7 @@ def pair(t):
 class PreNorm(nn.Module):
     def __init__(self, dim, fn):
         super().__init__()
-        self.norm = nn.LayerNorm(dim)
+        self.norm = nn.LayerNorm(dim)   #dim = 128
         self.fn = fn
     def forward(self, x, **kwargs):
         return self.fn(self.norm(x), **kwargs)
@@ -69,7 +69,7 @@ class Transformer(nn.Module):
     def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout = 0.):
         super().__init__()
         self.layers = nn.ModuleList([])
-        for _ in range(depth):
+        for _ in range(depth):  #depth = 12
             self.layers.append(nn.ModuleList([
                 PreNorm(dim, Attention(dim, heads = heads, dim_head = dim_head, dropout = dropout)),
                 PreNorm(dim, FeedForward(dim, mlp_dim, dropout = dropout))
@@ -90,6 +90,7 @@ class ViT(nn.Module):
 
         num_patches = (image_height // patch_height) * (image_width // patch_width)
         patch_dim = channels * patch_height * patch_width
+        self.patch_dim = patch_dim
         assert pool in {'cls', 'mean'}, 'pool type must be either cls (cls token) or mean (mean pooling)'
 
         # self.to_patch_embedding = nn.Sequential(
@@ -120,7 +121,7 @@ class ViT(nn.Module):
 
     def forward(self, img):
         x11 = self.to_patch_embedding1(img)
-        x12 = self.to_patch_embedding2(x11)
+        x12 = nn.LayerNorm(self.patch_dim)(x11)
         x13 = self.to_patch_embedding3(x12)
         x14 = self.to_patch_embedding4(x13)
         b, n, _ = x14.shape
